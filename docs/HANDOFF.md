@@ -1,4 +1,8 @@
-# Handoff — initial implementation in progress
+# Handoff
+
+STATUS: IN_PROGRESS
+
+Owner: Hermes. Claude must not modify this branch until STATUS is READY_FOR_HANDOFF. A pause or gateway interruption is not a transfer.
 
 Repository: https://github.com/konst54/coffee-journal (private). Branch feat/initial-journal. Bootstrap main aa82f91. User: Russian; flexible requirements; read-only compact mobile diary, ingestion from Hermes dictation/text/handwriting/photos of coffee bags. Do not interpret unreadable example photo as confirmed data. Need 1–100 integer ratings, temperature, grinder-specific grind, dose/water/derived ratio, brewer, duration, recipe, tasting comments.
 
