@@ -1,0 +1,18 @@
+# Private state and secrets (even a private repo is not storage for user records)
+.env
+.env.*
+!.env.example
+*.sqlite*
+*.db
+*.db-*
+*.jsonl
+private/
+assets-private/
+exports/
+backups/
+node_modules/
+__pycache__/
+*.pyc
+.coverage
+playwright-report/
+test-results/
