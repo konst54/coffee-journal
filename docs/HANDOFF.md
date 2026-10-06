@@ -1,8 +1,8 @@
 # Handoff — Coffee Journal
 
-STATUS: IN_PROGRESS
+STATUS: READY_FOR_HANDOFF
 
-Владелец: Claude (после слияния PR #1: проверка облачного деплоя Supabase, 2026-10-06 ~22:20 UTC). Ветка `feat/initial-journal` пересоздана от `main` 73a9d73.
+Владелец: никто (Claude ждёт от владельца publishable key и доступ к сети/коннектору). Ветка `feat/initial-journal` пересоздана от `main` 73a9d73; последний код — `432114c` (tools/verify_hosted.py).
 
 Предыдущая запись: владелец никто. Claude проверил интеграцию Supabase↔GitHub со стороны GitHub (см. «Интеграция Supabase») и ждёт от владельца подключения коннектора Supabase. Следующий агент ставит IN_PROGRESS перед работой.
 
@@ -31,6 +31,12 @@ STATUS: IN_PROGRESS
 - Chromium (Playwright 1.58): `tests/browser_smoke.py` (демо, 390/1280px) — PASS; `tests/browser_auth_smoke.py` (вход → личные данные → токен убран из URL → выход, Supabase замокан через route) — PASS, JS-ошибок нет.
 - `git diff --check` — чисто.
 - **Не проверено:** реальный Supabase (письма, CORS, publishable key, RLS по HTTP), реальный хостинг, удалённый CI.
+
+## После слияния PR #1 (2026-10-06 22:18 UTC)
+- Владелец слил PR #1 в `main` (`73a9d73`). Интеграция привязана к проекту **`evqbyfrvcukesdeziyvt`** (URL `https://evqbyfrvcukesdeziyvt.supabase.co`), production-ветка — `main`: на коммите слияния выполнился check-run приложения Supabase.
+- Check-run `112529920367` «Supabase Preview»: **success** (22:19:28–22:19:36), без текста. Более ранний run `112529694318` так и висит в `in_progress` (>40 мин) — похоже на брошенный дубль.
+- Применилась ли миграция на самом деле, по GitHub не видно. Подтвердить: `tools/verify_hosted.py` (публичный ключ, только чтение) или Database → Migrations / Table Editor в панели. Из среды агента `*.supabase.co` заблокирован.
+- Preview-ветки для feature-веток не создаются (skipped: «not associated with any Supabase Branch»), это ожидаемо без Branching.
 
 ## Интеграция Supabase (проверено 2026-10-06, только со стороны GitHub)
 - `main` = `aa82f91`, в нём только `AGENTS.md`; `supabase/` в `main` нет, значит, интеграция ничего не применяла.
