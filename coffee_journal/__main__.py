@@ -6,6 +6,18 @@ import sys
 from .storage import Journal
 
 
+MAX_INPUT_BYTES = 5 * 1024 * 1024
+
+
+def read_json(path):
+    # Bound memory before parsing; payloads come from chat/OCR and are untrusted.
+    with open(path, 'rb') as source:
+        raw = source.read(MAX_INPUT_BYTES + 1)
+    if len(raw) > MAX_INPUT_BYTES:
+        raise ValueError('Input file too large')
+    return json.loads(raw.decode('utf-8'))
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Private local coffee journal')
     sub = parser.add_subparsers(dest='command', required=True)
@@ -14,6 +26,9 @@ def main(argv=None):
     add.add_argument('--entity', required=True, choices=['coffee', 'batch', 'equipment', 'recipe', 'brew'])
     add.add_argument('--file', required=True)
     add.add_argument('--request-id', required=True)
+    bundle = sub.add_parser('import')
+    bundle.add_argument('--file', required=True)
+    bundle.add_argument('--request-id', required=True)
     for name in ('list', 'get'):
         cmd = sub.add_parser(name)
         cmd.add_argument('--entity', required=True, choices=['coffee', 'batch', 'equipment', 'recipe', 'brew'])
@@ -29,9 +44,9 @@ def main(argv=None):
         if args.command == 'init':
             result = {'ok': True, 'schema_version': 1}
         elif args.command == 'add':
-            with open(args.file, encoding='utf-8') as source:
-                payload = json.load(source)
-            result = {'id': journal.add(args.entity, payload, args.request_id)}
+            result = {'id': journal.add(args.entity, read_json(args.file), args.request_id)}
+        elif args.command == 'import':
+            result = journal.import_bundle(read_json(args.file), args.request_id)
         elif args.command == 'get':
             result = journal.get(args.entity, args.id)
         elif args.command == 'export':
@@ -45,7 +60,7 @@ def main(argv=None):
             result = journal.list(args.entity)
         print(json.dumps(result, ensure_ascii=False, allow_nan=False))
         return 0
-    except (ValueError, TypeError, OSError, sqlite3.Error):
+    except (ValueError, TypeError, OSError, RecursionError, sqlite3.Error):
         print(json.dumps({'error': 'Invalid request or storage operation failed'}))
         return 1
     finally:

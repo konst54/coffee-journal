@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import sqlite3
 import uuid
-from .validation import FIELDS, PRIVATE_FIELDS, validate, valid_uuid
+from .validation import FIELDS, PRIVATE_FIELDS, validate, validate_bundle, valid_uuid
 
 DEFAULT_DB = '/opt/data/coffee-journal-private/journal.sqlite3'
 PLURALS = {'coffee':'coffees','batch':'batches','equipment':'equipment','recipe':'recipes','brew':'brews'}
@@ -46,34 +46,66 @@ class Journal:
 
     def add(self, entity, payload, request_id):
         record = validate(entity, payload)
+        canonical = json.dumps(record, ensure_ascii=False, sort_keys=True, allow_nan=False)
+        return self._idempotent(request_id, entity, canonical, lambda: self._insert(entity, record))
+
+    def import_bundle(self, bundle, request_id):
+        """Insert several records in one transaction; later records may use {"$ref": label}."""
+        items = validate_bundle(bundle)
+        canonical = json.dumps(bundle, ensure_ascii=False, sort_keys=True, allow_nan=False)
+
+        def work():
+            refs, ids = {}, []
+            for item in items:
+                data = dict(item['data'])
+                for key, value in data.items():
+                    if isinstance(value, dict):
+                        if set(value) != {'$ref'} or not key.endswith('_id'):
+                            continue  # left for validate() to reject or accept (e.g. sensory)
+                        if value['$ref'] not in refs:
+                            raise ValueError('Unknown or forward reference')
+                        data[key] = refs[value['$ref']]
+                record_id = self._insert(item['entity'], validate(item['entity'], data))
+                ids.append(record_id)
+                if 'ref' in item:
+                    refs[item['ref']] = record_id
+            return json.dumps({'ids': ids, 'refs': refs})
+
+        return json.loads(self._idempotent(request_id, 'bundle', canonical, work))
+
+    def _idempotent(self, request_id, kind, canonical, work):
         if not isinstance(request_id, str) or not request_id.strip() or len(request_id)>500:
             raise ValueError('Request ID required')
-        canonical = json.dumps(record, ensure_ascii=False, sort_keys=True, allow_nan=False)
         # BEGIN IMMEDIATE prevents concurrent replays from racing.
         self.connection.execute('BEGIN IMMEDIATE')
         try:
             prev = self.connection.execute('SELECT entity,canonical,record_id FROM requests WHERE request_id=?', (request_id,)).fetchone()
             if prev:
-                if prev[:2] != (entity, canonical):
+                if prev[:2] != (kind, canonical):
                     raise ValueError('Idempotency conflict')
                 self.connection.commit()
                 return prev[2]
-            if entity=='batch' and not record.get('coffee_id'):
-                raise ValueError('Coffee required')
-            for key,(target,kind) in REFERENCES.get(entity,{}).items():
-                if record.get(key) is not None:
-                    ref = self.get(target, record[key])
-                    if kind and ref.get('kind') != kind:
-                        raise ValueError('Equipment kind mismatch')
-            record['id'] = record.get('id') or str(uuid.uuid4())
-            self.connection.execute(f'INSERT INTO {entity} VALUES (?, ?)',
-                                    (record['id'], json.dumps(record, ensure_ascii=False, allow_nan=False)))
-            self.connection.execute('INSERT INTO requests VALUES (?,?,?,?)', (request_id, entity, canonical, record['id']))
+            result = work()
+            self.connection.execute('INSERT INTO requests VALUES (?,?,?,?)', (request_id, kind, canonical, result))
             self.connection.commit()
-            return record['id']
+            return result
         except Exception:
             self.connection.rollback()
             raise
+
+    def _insert(self, entity, record):
+        """Reference checks and INSERT; the caller owns the transaction."""
+        if entity=='batch' and not record.get('coffee_id'):
+            raise ValueError('Coffee required')
+        for key,(target,kind) in REFERENCES.get(entity,{}).items():
+            if record.get(key) is not None:
+                ref = self.get(target, record[key])
+                if kind and ref.get('kind') != kind:
+                    raise ValueError('Equipment kind mismatch')
+        record['id'] = record.get('id') or str(uuid.uuid4())
+        self.connection.execute(f'INSERT INTO {entity} VALUES (?, ?)',
+                                (record['id'], json.dumps(record, ensure_ascii=False, allow_nan=False)))
+        return record['id']
 
     def list(self, entity):
         if entity not in FIELDS:

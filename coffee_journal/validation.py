@@ -121,3 +121,28 @@ def validate(entity, payload):
             if datetime.fromisoformat(value).utcoffset() is None:
                 raise ValueError('Timezone required')
     return {key: payload.get(key) for key in FIELDS[entity]} | ({'id': payload['id']} if 'id' in payload else {})
+
+
+MAX_BUNDLE_RECORDS = 200
+
+
+def validate_bundle(bundle):
+    """Shape check for import bundles; each record's data is validated later, after $ref resolution."""
+    if not isinstance(bundle, dict) or set(bundle) != {'records'}:
+        raise ValueError('Bundle must contain only records')
+    finite_json(bundle)
+    items = bundle['records']
+    if not isinstance(items, list) or not 1 <= len(items) <= MAX_BUNDLE_RECORDS:
+        raise ValueError('Bundle must contain 1..%d records' % MAX_BUNDLE_RECORDS)
+    labels = set()
+    for item in items:
+        if not isinstance(item, dict) or not {'entity', 'data'} <= set(item) <= {'entity', 'data', 'ref'}:
+            raise ValueError('Invalid bundle item')
+        if item['entity'] not in FIELDS or not isinstance(item['data'], dict):
+            raise ValueError('Invalid bundle item')
+        if 'ref' in item:
+            label = item['ref']
+            if not isinstance(label, str) or not 1 <= len(label) <= 100 or label in labels:
+                raise ValueError('Invalid or duplicate ref')
+            labels.add(label)
+    return items
