@@ -1,0 +1,21 @@
+# TEMPLATE ONLY: move to .github/workflows/ci.yml after workflow scope is authorized.
+name: journal-ci
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: python3 -m unittest discover -s tests -v
+      - run: npm test --prefix web
+      - run: npm ci --ignore-scripts --prefix tools/sql-check
+      - run: npm test --prefix tools/sql-check
+      - run: npm audit --prefix tools/sql-check --audit-level=moderate
