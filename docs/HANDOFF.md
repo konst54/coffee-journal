@@ -1,35 +1,49 @@
 # Handoff — Coffee Journal
 
-STATUS: IN_PROGRESS
+STATUS: READY_FOR_HANDOFF
 
-Владелец: Claude (снова взял ветку 2026-10-06, этап «публичный репозиторий + Supabase + Pages»). Гермес не меняет ветку до READY_FOR_HANDOFF.
+Владелец: никто. Claude завершил этап «Supabase-код и подготовка к публичному репозиторию» 2026-10-06. Следующий агент перед началом работы ставит `STATUS: IN_PROGRESS` со своим именем отдельным коммитом и пушит его.
 
-Предыдущая запись: владелец никто. Claude завершил этап 2026-10-06 ~06:05 UTC и больше не меняет эту ветку, пока снова не выставит `STATUS: IN_PROGRESS`. Следующий агент (Гермес или Claude) перед началом работы ставит `IN_PROGRESS` со своим именем отдельным коммитом и пушит его.
-
-Это рабочий checkpoint, НЕ продакшен-релиз.
+Это рабочий checkpoint, НЕ продакшен-релиз. Облако не развёрнуто.
 
 ## Откуда продолжать
-- Репозиторий: https://github.com/konst54/coffee-journal (приватный), ветка `feat/initial-journal`, draft PR #1. `main` содержит только bootstrap.
-- Последний коммит с кодом: `ff979e17f4758cce986cac6cb58d783ec18038c6`. Этот коммит с хэндоффом идёт следом — продолжать с **последнего коммита удалённой ветки** (`git pull --ff-only`).
-- История этапов: Гермес → `117253c` (CLI, viewer, SQL/RLS, документация); Claude → `b3085d6` (атомарный импорт), `ff979e1` (исправления с историей).
+- https://github.com/konst54/coffee-journal, ветка `feat/initial-journal`, draft PR #1. `main` содержит только bootstrap.
+- Последний коммит с кодом: `78a8717` (Pages build script). Коммит с этим хэндоффом идёт следом — продолжать с последнего коммита удалённой ветки.
+- Этапы: Гермес `117253c` (CLI, viewer, SQL/RLS) → Claude `b3085d6` (import), `ff979e1` (update/history) → Claude `cb9f2b3` (hygiene gate), `277ef26` (web auth), `3355d39` (publisher), `78a8717` (Pages bundle).
 
-## Что сделано на этапе Claude
-1. **`import`** — несколько записей одной транзакцией (новый кофе + пачка + оборудование + проба из одного сообщения): сохраняется всё или ничего. Ссылки внутри пакета задаются через `{"$ref":"метка"}` только в полях `*_id`, на существующие записи ссылаются обычным UUID. Повтор с тем же request-id возвращает те же ID, иное содержимое отвергается, неудачный импорт ключ не занимает. Не больше 200 записей.
-2. **`update` + `history`** — исправление существующей записи патчем; запись перепроверяется целиком, включая ссылки и тип оборудования. Каждая версия сохраняется в приватной таблице `history`, которая не попадает в экспорт. Идемпотентно по request-id. Удаления/архивирования нет.
-3. Защита входа: файл больше 5 МиБ отвергается до разбора JSON (и для `add`); очень глубокая вложенность JSON даёт чистую ошибку, а не traceback.
-4. Тест восстановления из backup: копия содержит записи и историю на момент снимка.
-5. Тесты: общий помощник `tests/cli_case.py`, новые `tests/test_import.py` и `tests/test_update.py`. Всё работает через настоящий CLI на временной БД. Документация обновлена: `docs/HERMES.md`, `SECURITY.md`, `docs/BACKLOG.md`.
+## Сделано на этом этапе
+1. **Готовность к публичному репозиторию.** Вся история (каждый коммит обеих веток, PR #1) проверена regex-сканом и `detect-secrets`: 0 находок, авторы только с noreply-адресами. `tests/test_repo_hygiene.py` в обязательном гейте падает на секретных ключах Supabase, не-anon JWT, приватных ключах, токенах GitHub/AWS/OpenAI/Anthropic, URL Postgres с паролем и файлах БД/фото/.env. В `.gitignore` добавлены ключи и сессии.
+2. **Сайт: вход и личные данные** (`web/auth.js`, `web/authbar.js`, `web/config.js`, `web/demo.js`). Вход по ссылке из письма, без создания пользователей. Чтение `journal_snapshots` своей строки. Ротация токена, выход. Пустой config → только демо. Записи по-прежнему нельзя вносить через сайт.
+3. **Публикатор** (`coffee_journal/publish.py`, команды `publish-login` и `publish`): действует от имени владельца, хранит только refresh token (0600), использует ожидаемую ревизию, проверяет результат чтением, приватные source-поля не уходят.
+4. **Сборка Pages** `tools/build-pages.sh OUT`: только runtime-файлы, отказ при подозрительном содержимом.
+5. Документация: `docs/SETUP_SUPABASE.md` (шаги владельца), `docs/DEPLOYMENT.md`, `SECURITY.md` (решения и принятые риски), `docs/HERMES.md` (publish), README, BACKLOG.
 
-Схема БД расширяется только добавлением таблицы `history` (`CREATE TABLE IF NOT EXISTS`); существующая приватная база совместима, миграция данных не нужна. Перед первым запуском новой версии на боевой базе всё равно сделать `backup`.
+Отклонение от TDD: тесты `web/tests/auth.test.js` написаны сразу после кода, а не до него. Остальное — тест → реализация.
 
-## Проверки — реально выполнены Claude 2026-10-06 ~06:00 UTC
-- `python3 -m unittest discover -s tests -v` — 17 тестов, OK (5 прежних + 7 импорт + 5 update/history/restore). Перед реализацией наблюдался RED.
-- `npm test --prefix web` — 4/4 pass.
-- `npm ci --ignore-scripts --prefix tools/sql-check && npm test --prefix tools/sql-check` — PASS (PGlite; `auth.uid` — заглушка, не настоящий Supabase).
-- `npm audit --prefix tools/sql-check --audit-level=moderate` — 0 уязвимостей.
-- Настоящий Chromium (Playwright 1.58, `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) на 390px и 1280px: прошёл, переполнения и JS-ошибок нет. Скриншот только локальный, в репозиторий не попал. UI на этом этапе не менялся.
+## Проверки — реально выполнены 2026-10-06
+- `python3 -m unittest discover -s tests -v` — 24 теста, OK (import, update/history/restore, publish против фейкового Auth/PostgREST, hygiene).
+- `npm test --prefix web` — 14/14.
+- `npm test --prefix tools/sql-check` — PASS (PGlite); `npm audit` — 0 уязвимостей.
+- Chromium (Playwright 1.58): `tests/browser_smoke.py` (демо, 390/1280px) — PASS; `tests/browser_auth_smoke.py` (вход → личные данные → токен убран из URL → выход, Supabase замокан через route) — PASS, JS-ошибок нет.
 - `git diff --check` — чисто.
-- Удалённый CI не настроен и не запускался.
+- **Не проверено:** реальный Supabase (письма, CORS, publishable key, RLS по HTTP), реальный хостинг, удалённый CI.
+
+## Блокеры (нужен владелец)
+1. **Supabase.** У агента нет доступа к аккаунту Supabase: коннектора в сессии нет, ключа доступа тоже. Интеграция Supabase↔GitHub только применяет миграции при слиянии в production-ветку. Шаги для владельца — `docs/SETUP_SUPABASE.md` (≈10 минут). Агенту нужны только Project URL и publishable key — их можно прислать в чат, они публичны по дизайну.
+2. **Публичность репозитория.** У GitHub-инструментов агента нет операции смены видимости — переключает владелец (Settings → Change visibility).
+3. **Деплой на Pages.** Попытка запушить ветку `gh-pages` заблокирована средой агента как production deploy; AGENTS.md тоже запрещает автодеплой. Нужно явное разрешение владельца (или он деплоит сам: `tools/build-pages.sh` → ветка `gh-pages` → Settings → Pages).
+4. **Skill Гермеса** на его хосте ещё не знает `import`/`update`/`publish`. Обновляет тот, у кого есть доступ к хосту.
+5. Вопрос о порядке полей в slash-строке (см. предыдущий хэндофф) остаётся открытым.
+
+## Связь с Гермесом и Supabase — фактическое состояние
+- Гермес: внесение через `add` работает на его хосте. `import`, `update`, `publish` есть в коде, но skill их не использует.
+- Supabase: код и SQL готовы, проект не настроен. `web/config.js` пустой, сайт показывает только демо.
+- Pages: не опубликовано.
+
+## Приватные данные
+- Каноническая БД: `/opt/data/coffee-journal-private/journal.sqlite3` (хост Гермеса, вне Git). Сессия публикатора — `supabase-session.json` в той же директории (600). Пароль нигде не хранится.
+- В Supabase попадает только экспорт без `source_text`/`source_refs` и без `history`. Он всё равно личный и доступен только владельцу через RLS.
+- Секретные ключи Supabase, пароль БД и пароль пользователя не нужны ни агенту, ни сайту. Их нельзя присылать в чат и нельзя коммитить.
 
 ## Команды
 ```sh
@@ -38,32 +52,10 @@ python3 -m unittest discover -s tests -v
 npm test --prefix web
 npm ci --ignore-scripts --prefix tools/sql-check && npm test --prefix tools/sql-check
 npm audit --prefix tools/sql-check --audit-level=moderate
-python3 -m http.server 8765 --bind 127.0.0.1 --directory web   # затем:
-CHROMIUM_PATH=/path/to/chrome COFFEE_SCREENSHOT=/tmp/x.png uv run --with playwright==1.58.0 python tests/browser_smoke.py
+CHROMIUM_PATH=/path/to/chrome uv run --with playwright==1.58.0 python tests/browser_auth_smoke.py
+python3 -m http.server 8765 --bind 127.0.0.1 --directory web   # + tests/browser_smoke.py
+tools/build-pages.sh /tmp/site
 ```
-Новые команды CLI:
-```sh
-python3 -m coffee_journal import  --file bundle.json --request-id telegram:chat:message
-python3 -m coffee_journal update  --entity brew --id UUID --file patch.json --request-id telegram:chat:message:fix
-python3 -m coffee_journal history --entity brew --id UUID
-```
-Формат и пример пакета — в `docs/HERMES.md`.
 
-## Связь с Гермесом и Supabase — фактическое состояние
-- **Гермес:** skill `coffee-journal` установлен только на хосте Гермеса (`/opt/data/skills/productivity/coffee-journal/SKILL.md`) и знает только `add`. Claude не имеет доступа к этому хосту и skill **не обновлял**. Нужно: подтянуть ветку в `/opt/data/coffee-journal`, сделать `backup` и обновить skill — использовать `import` для «новая пачка + проба», `update` для исправлений. До этого всё продолжает работать через `add`.
-- **Supabase:** не подключён. Нет проекта, учётных данных, auth-адаптера, публикатора и хостинга. SQL-миграция `supabase/migrations/001_projection.sql` проверена только локально (PGlite). Веб-просмотр показывает только вымышленную демонстрацию.
-- **GitHub Pages / CI:** не настроены и не опубликованы.
-
-## Приватные данные (без секретов)
-- Каноническая база: `/opt/data/coffee-journal-private/journal.sqlite3` на хосте Гермеса, вне Git. На момент хэндоффа Гермеса проб в ней не было; Claude к этой базе доступа не имел и её не трогал.
-- В тестах — только временные базы (`COFFEE_JOURNAL_DB`). Демо-данные явно помечены как вымышленные.
-- Таблица `history` и поля `source_text`/`source_refs` приватны и не экспортируются. Даже экспорт содержит личные заметки — не публиковать в Pages.
-- Исходные фото копировать в приватное постоянное хранилище до очистки кэша чата; в Git не коммитить. Записи по фото и неоднозначной slash-нотации не выдумывать.
-
-## Блокеры и вопросы пользователю
-1. **Supabase и хостинг (P0):** нужен доступ к проекту Supabase (или решение его создать) и выбор хостинга (Pages требует подходящего плана GitHub для приватного репозитория). Без этого auth-просмотр собственных записей не сделать. Секреты не присылать в чат и не коммитить.
-2. **Порядок полей в slash-строке:** сейчас просмотр показывает `девайс / °C / помол / г кофе / г воды / соотношение / время / оценка`. Название кофемолки в строке не выводится — только значение помола, а соотношение не округляется (`1:13.75`). Нужно подтвердить порядок и то, как пользователь пишет эти строки сам, — это блокирует парсер записей и доработку сравнения.
-3. Обновление skill на хосте Гермеса (см. выше) делает тот, у кого есть доступ к хосту.
-
-## Следующий конкретный шаг
-Если доступ к Supabase получен — пункт 1 в `docs/BACKLOG.md`: публикатор и auth-просмотр, затем проверка на реальном HTTP с двумя пользователями и анонимом. Если нет — обновить skill Гермеса на `import`/`update` и проверить на тестовой базе с реальной записью пользователя (после его подтверждения), затем доработать сравнение по ответам на вопрос 2.
+## Следующий шаг
+Когда владелец пришлёт Project URL и publishable key: вписать их в `web/config.js` (hygiene-тест пропускает только publishable/anon), пройти раздел 6 `SETUP_SUPABASE.md` на реальном проекте (аноним, второй пользователь, вход с телефона), получить разрешение и опубликовать Pages, затем обновить skill Гермеса на `import`/`publish`.

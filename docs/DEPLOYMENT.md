@@ -1,16 +1,19 @@
-# Hosting and Supabase — not deployed yet
+# Hosting and Supabase — код готов, облако не развёрнуто
 
-## Architecture decision v1
-Canonical persistent SQLite serves Hermes ingestion immediately. Supabase initially stores an authenticated read-only projection `journal_snapshots` per owner. This choice avoids uploading source photographs/transcripts and postpones hosting credentials, but means cloud is NOT yet canonical. Read revision before publishing and require matching expected revision; do not overwrite newer remote data. Decide canonical store before allowing writes from more than one machine.
+Пошаговая инструкция для владельца: [SETUP_SUPABASE.md](SETUP_SUPABASE.md).
 
-`web/main.js` contains only fictional fixtures. `createViewer(...).loadAuthenticated(adapter)` accepts `{dataset, authenticated:true}` only from a trusted authenticated adapter. Such an adapter is not implemented; the flag itself is not an authentication system.
+## Архитектура v1
+Каноническая база — приватный SQLite на хосте Гермеса. Supabase хранит только авторизованную read-only проекцию `journal_snapshots` (одна строка на владельца, без `source_*` полей). Публикует её `python3 -m coffee_journal publish` от имени обычного Auth-пользователя-владельца (allowlist `journal_private.writers`) с проверкой ревизии и чтением результата. Секретные/service ключи не используются нигде.
 
-## Setup remaining
-1. Authorized Supabase project/account access is required; credentials were not found. Create project only with user authorization. Apply `supabase/migrations/001_projection.sql` once as owner.
-2. Configure Auth without public signups if possible, create/invite intended owner, allowlist exact redirect URL. Insert authorized owner UUID into `journal_private.writers` via trusted administrator. Do not allow clients to edit this table.
-3. Build backend publisher using normal owner's auth token (not broad service key); validated export excludes source fields. Read revision and call `publish_journal(p_dataset,p_expected_revision)`; GET exact owner projection afterwards and compare content/revision. Exponential retry only on network; 40001 requires explicit reconciliation, not blind overwrite.
-4. Build frontend auth and reader: anonymous gets only demo; authenticated GET `/rest/v1/journal_snapshots?select=dataset,revision` with user JWT plus project publishable key. Verify session via `/auth/v1/user`. Keep tokens memory-only, clear on logout/expiry, never show live data based on a user-selected mode flag.
-5. Verify two-user isolation and anon denial through hosted HTTP; verify token expiry/logout, denied writer, source exclusion, race/conflict. Do not equate local SQL test to cloud readiness.
-6. Deploy only code/static demo to GitHub Pages; fetch live data after authentication. Private repo Pages availability depends on GitHub plan; do not change repo visibility to get free Pages without permission. Existing Hermes container cannot expose another public port; local 8765 is for tests only.
+Сайт — статический (`web/`, без сборки и зависимостей), подходит для GitHub Pages. При пустом `web/config.js` показывает только вымышленное демо. Если задать URL проекта и publishable key, появляется вход по magic link: только для существующих пользователей, после входа читается собственная строка проекции.
 
-No hosted project, public URL, live sync, or remote CI was verified in this checkpoint.
+## Реализовано и проверено локально
+- `web/auth.js`, `web/authbar.js`: unit-тесты с фейковым fetch и настоящий Chromium (`tests/browser_auth_smoke.py`) с подменённой сетью Supabase.
+- `coffee_journal/publish.py`: тесты против локального фейкового Auth/PostgREST (`tests/test_publish.py`): ротация токена, конфликт ревизии, отказ writer, подмена при чтении назад.
+- SQL/RLS: PGlite (`tools/sql-check`).
+
+## НЕ проверено (нужен реальный проект)
+Реальные GoTrue/PostgREST, письма magic link, CORS, ограничения частоты, поведение publishable key, реальный хостинг и заголовки. До выполнения раздела 6 в SETUP_SUPABASE система не считается развёрнутой.
+
+## Почему не автодеплой
+AGENTS.md запрещает автоматический production-деплой. Публикация на Pages выполняется по явному разрешению владельца (`tools/build-pages.sh`, ветка `gh-pages`). CI с deploy-шагом можно добавить позже, когда у токена будет workflow scope.
