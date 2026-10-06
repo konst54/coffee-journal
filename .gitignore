@@ -16,3 +16,8 @@ __pycache__/
 .coverage
 playwright-report/
 test-results/
+*.pem
+*.key
+supabase/.temp/
+supabase/.branches/
+*credentials*.json
