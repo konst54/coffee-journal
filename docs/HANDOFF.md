@@ -1,67 +1,67 @@
 # Handoff — Coffee Journal
 
-STATUS: IN_PROGRESS
+STATUS: READY_FOR_HANDOFF
 
-Owner: Claude (claimed 2026-10-06 ~05:45 UTC from tip 117253c). Hermes must not modify this branch until STATUS is READY_FOR_HANDOFF again. Notes below describe Hermes' checkpoint and stay valid until Claude replaces them.
+Владелец: никто. Claude завершил этап 2026-10-06 ~06:05 UTC и больше не меняет эту ветку, пока снова не выставит `STATUS: IN_PROGRESS`. Следующий агент (Гермес или Claude) перед началом работы ставит `IN_PROGRESS` со своим именем отдельным коммитом и пушит его.
 
-Previous note from Hermes: Claude may begin now. Hermes has finished this checkpoint and relinquishes development of this branch. This is an initial working checkpoint, NOT a production release. Hermes will not automatically resume development when quota resets. Local ingestion via the stable CLI may continue without changing code.
+Это рабочий checkpoint, НЕ продакшен-релиз.
 
-Verified implementation/docs checkpoint: `f82a639500f8680f710de12cd2b0fc22a57c7280`. This readiness-only commit follows it; Claude should use latest remote tip. Draft PR: https://github.com/konst54/coffee-journal/pull/1 .
+## Откуда продолжать
+- Репозиторий: https://github.com/konst54/coffee-journal (приватный), ветка `feat/initial-journal`, draft PR #1. `main` содержит только bootstrap.
+- Последний коммит с кодом: `ff979e17f4758cce986cac6cb58d783ec18038c6`. Этот коммит с хэндоффом идёт следом — продолжать с **последнего коммита удалённой ветки** (`git pull --ff-only`).
+- История этапов: Гермес → `117253c` (CLI, viewer, SQL/RLS, документация); Claude → `b3085d6` (атомарный импорт), `ff979e1` (исправления с историей).
 
-## Repository / resume point
-- Private repo: https://github.com/konst54/coffee-journal
-- Branch: `feat/initial-journal`; `main` contains bootstrap only. Do not start from main or merge unfinished work blindly.
-- Code checkpoint: `c7607b9adf115d730c4dd11ae0fefd90b794c0f3` (private CLI, viewer, SQL). Additional browser test and documentation included in final handoff commits; use the **latest remote tip**, not only this earlier code checkpoint.
-- Working checkout on Hermes host: `/opt/data/coffee-journal`. No child agents still own work; their interrupted artifacts were inspected and completed by the parent.
+## Что сделано на этапе Claude
+1. **`import`** — несколько записей одной транзакцией (новый кофе + пачка + оборудование + проба из одного сообщения): сохраняется всё или ничего. Ссылки внутри пакета задаются через `{"$ref":"метка"}` только в полях `*_id`, на существующие записи ссылаются обычным UUID. Повтор с тем же request-id возвращает те же ID, иное содержимое отвергается, неудачный импорт ключ не занимает. Не больше 200 записей.
+2. **`update` + `history`** — исправление существующей записи патчем; запись перепроверяется целиком, включая ссылки и тип оборудования. Каждая версия сохраняется в приватной таблице `history`, которая не попадает в экспорт. Идемпотентно по request-id. Удаления/архивирования нет.
+3. Защита входа: файл больше 5 МиБ отвергается до разбора JSON (и для `add`); очень глубокая вложенность JSON даёт чистую ошибку, а не traceback.
+4. Тест восстановления из backup: копия содержит записи и историю на момент снимка.
+5. Тесты: общий помощник `tests/cli_case.py`, новые `tests/test_import.py` и `tests/test_update.py`. Всё работает через настоящий CLI на временной БД. Документация обновлена: `docs/HERMES.md`, `SECURITY.md`, `docs/BACKLOG.md`.
 
-## User contract
-Russian replies. Read-only compact mobile viewing, no record-entry forms. Choose a coffee → compact slash-parameter lines → compare past brews and select today's preparation. Ingestion from this Hermes Telegram chat by dictation/text/handwritten notes/coffee bag photos. Attributes unknown or uncertain remain null / require clarification, not guesses. Core: temperature, grinder+setting, coffee/water grams, derived ratio, integer rating 1–100, brewer, datetime, duration, recipe, tasting notes. Separate planned recipe vs actual execution and bag descriptors vs personal notes. Requirements will evolve; do not overbuild optional fields.
+Схема БД расширяется только добавлением таблицы `history` (`CREATE TABLE IF NOT EXISTS`); существующая приватная база совместима, миграция данных не нужна. Перед первым запуском новой версии на боевой базе всё равно сделать `backup`.
 
-## Implemented
-- Python stdlib `coffee_journal`: create/read for coffee, batch, equipment, recipe, brew; strict validation of fields/types/dates/finite numbers/UUID, relational references/equipment kind; SQLite atomic per-record transactions and stable idempotency IDs with conflict detection.
-- Private backups and source-excluding export with exclusive file creation. No update/delete yet, no multi-entity transaction. Application reference checks are NOT database-level FKs. See SECURITY caveats.
-- `web/`: dependency-free static ES modules, explicit fictional demo, coffee/device/rating/recent filters, compact parameter strings + comments, up to 3 comparison selections, recipe/details. Relative paths compatible with Pages; not published.
-- `supabase/migrations/001_projection.sql`: private owner read projection, RLS, anon denial, no direct client writes, allowlisted publisher RPC, optimistic revisions, recursive private-source exclusion. Local PostgreSQL/PGlite security tests; not applied to hosted Supabase.
-- SDLC, security review, hosting plan, portable Hermes ingestion guide, backlog. CI template is intentionally in docs, not active GitHub Actions.
+## Проверки — реально выполнены Claude 2026-10-06 ~06:00 UTC
+- `python3 -m unittest discover -s tests -v` — 17 тестов, OK (5 прежних + 7 импорт + 5 update/history/restore). Перед реализацией наблюдался RED.
+- `npm test --prefix web` — 4/4 pass.
+- `npm ci --ignore-scripts --prefix tools/sql-check && npm test --prefix tools/sql-check` — PASS (PGlite; `auth.uid` — заглушка, не настоящий Supabase).
+- `npm audit --prefix tools/sql-check --audit-level=moderate` — 0 уязвимостей.
+- Настоящий Chromium (Playwright 1.58, `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`) на 390px и 1280px: прошёл, переполнения и JS-ошибок нет. Скриншот только локальный, в репозиторий не попал. UI на этом этапе не менялся.
+- `git diff --check` — чисто.
+- Удалённый CI не настроен и не запускался.
 
-## Hermes link — actual state
-Default-profile skill `coffee-journal` installed at `/opt/data/skills/productivity/coffee-journal/SKILL.md`. It resolves existing entities, parses text/voice/photos conservatively, stages private JSON, calls CLI with stable platform/chat/message/index request IDs and gets the returned record before claiming success. No new webhook/Telegram listener or gateway configuration required. Skill is local to this host, not automatically installed on Claude's machine; portable instructions: `docs/HERMES.md`.
-
-Private canonical DB: `/opt/data/coffee-journal-private/journal.sqlite3`; initialized. Last verified brew list is empty. No user examples/photos have been registered, and synthetic tests use isolated scratch databases. Original attachments remain in chat cache, not durable imported assets. When actual photo ingestion occurs, copy sources privately before cache cleanup. DB/export/photo records are never committed; do not attempt to infer records from reference app screenshots.
-
-## Verification — actual run 2026-10-06 05:37 UTC
-- `python3 -m unittest discover -s tests -v`: 5 tests PASS, including all-entity validation, ID replay/conflict, reference and equipment kind checks, source exclusion, backup permissions and symlink refusal. CLI tests do real add→get/list readback on isolated temporary DBs.
-- `npm test --prefix web`: 4 tests PASS (joins/sort/zero+null, literal XSS-like text/no entry forms, comparison limit, demo banner stays unless authenticated adapter resolves).
-- `npm test --prefix tools/sql-check`: PASS; real PostgreSQL/PGlite evaluates owner read, cross-owner isolation, anon/read/RPC denial, no direct delete, writer allowlist, stale revision rejection, private keys nested exclusion and schema-envelope rejection. auth.uid is a test stub, not real GoTrue/JWT.
-- `npm audit --prefix tools/sql-check --audit-level=moderate`: 0 vulnerabilities in observed run.
-- Real Chromium via Playwright: PASS at 390px mobile and 1280px desktop, no page overflow or JS errors; exercised coffee/device/rating filters, comparison, details, fictional banner, no forms. Screenshot inspected: `/opt/data/cache/scratch/coffee-journal-mobile.png` (local, not repo).
-- `python3 -m coffee_journal init` against actual default DB: ok; brew list `[]`.
-- `git diff --check`: PASS. Tests ran locally only; remote CI/staging not claimed.
-
-## Exact commands for Claude
+## Команды
 ```sh
-git fetch origin
-git switch feat/initial-journal
-git pull --ff-only
+git fetch origin && git switch feat/initial-journal && git pull --ff-only
 python3 -m unittest discover -s tests -v
 npm test --prefix web
-npm ci --ignore-scripts --prefix tools/sql-check
-npm test --prefix tools/sql-check
+npm ci --ignore-scripts --prefix tools/sql-check && npm test --prefix tools/sql-check
 npm audit --prefix tools/sql-check --audit-level=moderate
-python3 -m http.server 8765 --bind 127.0.0.1 --directory web
-# In another terminal, Chromium installed:
-uv run --with playwright==1.58.0 python tests/browser_smoke.py
+python3 -m http.server 8765 --bind 127.0.0.1 --directory web   # затем:
+CHROMIUM_PATH=/path/to/chrome COFFEE_SCREENSHOT=/tmp/x.png uv run --with playwright==1.58.0 python tests/browser_smoke.py
 ```
-Override CHROMIUM_PATH and COFFEE_VIEW_URL on other hosts. Override COFFEE_JOURNAL_DB for test/dev data. Screenshots default to Hermes scratch path; set COFFEE_SCREENSHOT elsewhere.
+Новые команды CLI:
+```sh
+python3 -m coffee_journal import  --file bundle.json --request-id telegram:chat:message
+python3 -m coffee_journal update  --entity brew --id UUID --file patch.json --request-id telegram:chat:message:fix
+python3 -m coffee_journal history --entity brew --id UUID
+```
+Формат и пример пакета — в `docs/HERMES.md`.
 
-## Blockers / first concrete next step
-**No Supabase account/project credentials configured; no hosted website, authenticated UI adapter, cloud publisher or live sync.** The UI only shows fixtures. Obtain authorized project/hosting access, then implement publisher and auth reader described in DEPLOYMENT. Read SECURITY first; staging needs two real users and anonymous HTTP tests. Do not publish private export JSON to Pages as a shortcut.
+## Связь с Гермесом и Supabase — фактическое состояние
+- **Гермес:** skill `coffee-journal` установлен только на хосте Гермеса (`/opt/data/skills/productivity/coffee-journal/SKILL.md`) и знает только `add`. Claude не имеет доступа к этому хосту и skill **не обновлял**. Нужно: подтянуть ветку в `/opt/data/coffee-journal`, сделать `backup` и обновить skill — использовать `import` для «новая пачка + проба», `update` для исправлений. До этого всё продолжает работать через `add`.
+- **Supabase:** не подключён. Нет проекта, учётных данных, auth-адаптера, публикатора и хостинга. SQL-миграция `supabase/migrations/001_projection.sql` проверена только локально (PGlite). Веб-просмотр показывает только вымышленную демонстрацию.
+- **GitHub Pages / CI:** не настроены и не опубликованы.
 
-GitHub OAuth observed without workflow scope (repo/read:org/gist only); remote Actions not set up. `docs/ci-template.yml` can be activated after authorization. Private repository Pages may require a paid plan; do not change visibility without permission. Hermes container has no new public port route; localhost server is not a deployment.
+## Приватные данные (без секретов)
+- Каноническая база: `/opt/data/coffee-journal-private/journal.sqlite3` на хосте Гермеса, вне Git. На момент хэндоффа Гермеса проб в ней не было; Claude к этой базе доступа не имел и её не трогал.
+- В тестах — только временные базы (`COFFEE_JOURNAL_DB`). Демо-данные явно помечены как вымышленные.
+- Таблица `history` и поля `source_text`/`source_refs` приватны и не экспортируются. Даже экспорт содержит личные заметки — не публиковать в Pages.
+- Исходные фото копировать в приватное постоянное хранилище до очистки кэша чата; в Git не коммитить. Записи по фото и неоднозначной slash-нотации не выдумывать.
 
-Backlog order: real auth/publisher+viewer and verified hosting → atomic import and audit-aware correction/backup restore → richer nullable coffee/batch attributes → refined compact comparison and private asset storage. See `docs/BACKLOG.md` acceptance for first usable release.
+## Блокеры и вопросы пользователю
+1. **Supabase и хостинг (P0):** нужен доступ к проекту Supabase (или решение его создать) и выбор хостинга (Pages требует подходящего плана GitHub для приватного репозитория). Без этого auth-просмотр собственных записей не сделать. Секреты не присылать в чат и не коммитить.
+2. **Порядок полей в slash-строке:** сейчас просмотр показывает `девайс / °C / помол / г кофе / г воды / соотношение / время / оценка`. Название кофемолки в строке не выводится — только значение помола, а соотношение не округляется (`1:13.75`). Нужно подтвердить порядок и то, как пользователь пишет эти строки сам, — это блокирует парсер записей и доработку сравнения.
+3. Обновление skill на хосте Гермеса (см. выше) делает тот, у кого есть доступ к хосту.
 
-## Ownership / quota
-At latest primary quota check after recovery, short window was 1% used and weekly 19% used; the prior window reset during interruption. That is historical, not current quota. Do not burn quota simply to reach zero. Publish a resumable checkpoint before exhaustion; emergency fallback authorized only for final commit/push/handoff, never substantive implementation. Ordinary interruptions do not revoke scope; recover from current artifacts without asking the user again unless an explicit new instruction requires it.
-
-READY_FOR_HANDOFF means Claude may begin from latest remote tip and update ownership/status in its own branch. If Claude is already editing, Hermes must not resume this branch even after quota resets.
+## Следующий конкретный шаг
+Если доступ к Supabase получен — пункт 1 в `docs/BACKLOG.md`: публикатор и auth-просмотр, затем проверка на реальном HTTP с двумя пользователями и анонимом. Если нет — обновить skill Гермеса на `import`/`update` и проверить на тестовой базе с реальной записью пользователя (после его подтверждения), затем доработать сравнение по ответам на вопрос 2.
