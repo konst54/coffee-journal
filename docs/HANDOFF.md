@@ -1,8 +1,10 @@
 # Handoff — Coffee Journal
 
-STATUS: IN_PROGRESS
+STATUS: READY_FOR_HANDOFF
 
-Owner: Hermes until the final READY_FOR_HANDOFF commit. This is an initial working checkpoint, NOT a production release. Next owner: Claude once ready. Hermes will stop editing the transferred branch and will not automatically resume development when quota resets. Local ingestion via the stable CLI may continue without changing code.
+Owner: Claude may begin now. Hermes has finished this checkpoint and relinquishes development of this branch. This is an initial working checkpoint, NOT a production release. Hermes will not automatically resume development when quota resets. Local ingestion via the stable CLI may continue without changing code.
+
+Verified implementation/docs checkpoint: `f82a639500f8680f710de12cd2b0fc22a57c7280`. This readiness-only commit follows it; Claude should use latest remote tip. Draft PR: https://github.com/konst54/coffee-journal/pull/1 .
 
 ## Repository / resume point
 - Private repo: https://github.com/konst54/coffee-journal
