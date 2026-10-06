@@ -39,10 +39,15 @@ def main(argv=None):
         cmd.add_argument('--entity', required=True, choices=['coffee', 'batch', 'equipment', 'recipe', 'brew'])
         if name != 'list':
             cmd.add_argument('--id', required=True)
+    login = sub.add_parser('publish-login', help='store a Supabase session; password is read from stdin')
+    login.add_argument('--email', required=True)
+    sub.add_parser('publish', help='upload the source-free export to the owner Supabase projection')
     for name in ('export', 'backup'):
         cmd = sub.add_parser(name)
         cmd.add_argument('--file', required=True)
     args = parser.parse_args(argv)
+    if args.command in ('publish-login', 'publish'):
+        return run_publish(args)
     journal = None
     try:
         journal = Journal()
@@ -75,6 +80,29 @@ def main(argv=None):
     finally:
         if journal is not None:
             journal.close()
+
+
+def run_publish(args):
+    from . import publish
+    journal = None
+    try:
+        if args.command == 'publish-login':
+            import getpass
+            password = getpass.getpass('Supabase password: ') if sys.stdin.isatty() else sys.stdin.readline().rstrip('\n')
+            result = publish.login(args.email, password)
+        else:
+            journal = Journal()
+            result = publish.publish(journal)
+        print(json.dumps(result))
+        return 0
+    except publish.PublishError as err:
+        print(json.dumps({'error': 'publish failed', 'category': err.category}))
+    except (ValueError, TypeError, OSError, sqlite3.Error):
+        print(json.dumps({'error': 'publish failed', 'category': 'local'}))
+    finally:
+        if journal is not None:
+            journal.close()
+    return 1
 
 
 if __name__ == '__main__':
