@@ -42,6 +42,10 @@ class Journal:
         for entity in FIELDS:
             self.connection.execute(f'CREATE TABLE IF NOT EXISTS {entity} (id TEXT PRIMARY KEY, payload TEXT NOT NULL)')
         self.connection.execute('CREATE TABLE IF NOT EXISTS requests (request_id TEXT PRIMARY KEY, entity TEXT NOT NULL, canonical TEXT NOT NULL, record_id TEXT NOT NULL)')
+        # Every superseded and current version of corrected records; private, never exported.
+        self.connection.execute('CREATE TABLE IF NOT EXISTS history (entity TEXT NOT NULL, record_id TEXT NOT NULL, '
+                                'version INTEGER NOT NULL, payload TEXT NOT NULL, request_id TEXT, '
+                                'PRIMARY KEY (entity, record_id, version))')
         self.connection.commit()
 
     def add(self, entity, payload, request_id):
@@ -93,8 +97,46 @@ class Journal:
             self.connection.rollback()
             raise
 
-    def _insert(self, entity, record):
-        """Reference checks and INSERT; the caller owns the transaction."""
+    def update(self, entity, record_id, patch, request_id):
+        """Correct fields of an existing record; previous versions stay in history."""
+        if entity not in FIELDS:
+            raise ValueError('Invalid entity')
+        valid_uuid(record_id)
+        if not isinstance(patch, dict) or not patch or 'id' in patch:
+            raise ValueError('Patch must be a non-empty object without id')
+        canonical = json.dumps({'id': record_id, 'patch': patch}, ensure_ascii=False, sort_keys=True, allow_nan=False)
+
+        def work():
+            current = self.get(entity, record_id)
+            record = validate(entity, {k: v for k, v in current.items() if k != 'id'} | patch)
+            record['id'] = record_id
+            self._check_refs(entity, record)
+            last = self.connection.execute('SELECT MAX(version) FROM history WHERE entity=? AND record_id=?',
+                                           (entity, record_id)).fetchone()[0]
+            if last is None:
+                self._history(entity, current, 1, None)
+                last = 1
+            payload = self._history(entity, record, last + 1, request_id)
+            self.connection.execute(f'UPDATE {entity} SET payload=? WHERE id=?', (payload, record_id))
+            return json.dumps({'id': record_id, 'version': last + 1})
+
+        return json.loads(self._idempotent(request_id, 'update:' + entity, canonical, work))
+
+    def history(self, entity, record_id):
+        current = self.get(entity, record_id)
+        rows = self.connection.execute('SELECT version, payload, request_id FROM history WHERE entity=? AND record_id=? '
+                                       'ORDER BY version', (entity, record_id)).fetchall()
+        if not rows:
+            return [{'version': 1, 'record': current, 'request_id': None}]
+        return [{'version': v, 'record': json.loads(p), 'request_id': r} for v, p, r in rows]
+
+    def _history(self, entity, record, version, request_id):
+        payload = json.dumps(record, ensure_ascii=False, allow_nan=False)
+        self.connection.execute('INSERT INTO history VALUES (?,?,?,?,?)',
+                                (entity, record['id'], version, payload, request_id))
+        return payload
+
+    def _check_refs(self, entity, record):
         if entity=='batch' and not record.get('coffee_id'):
             raise ValueError('Coffee required')
         for key,(target,kind) in REFERENCES.get(entity,{}).items():
@@ -102,6 +144,10 @@ class Journal:
                 ref = self.get(target, record[key])
                 if kind and ref.get('kind') != kind:
                     raise ValueError('Equipment kind mismatch')
+
+    def _insert(self, entity, record):
+        """Reference checks and INSERT; the caller owns the transaction."""
+        self._check_refs(entity, record)
         record['id'] = record.get('id') or str(uuid.uuid4())
         self.connection.execute(f'INSERT INTO {entity} VALUES (?, ?)',
                                 (record['id'], json.dumps(record, ensure_ascii=False, allow_nan=False)))

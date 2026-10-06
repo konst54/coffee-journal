@@ -29,10 +29,15 @@ def main(argv=None):
     bundle = sub.add_parser('import')
     bundle.add_argument('--file', required=True)
     bundle.add_argument('--request-id', required=True)
-    for name in ('list', 'get'):
+    update = sub.add_parser('update')
+    update.add_argument('--entity', required=True, choices=['coffee', 'batch', 'equipment', 'recipe', 'brew'])
+    update.add_argument('--id', required=True)
+    update.add_argument('--file', required=True)
+    update.add_argument('--request-id', required=True)
+    for name in ('list', 'get', 'history'):
         cmd = sub.add_parser(name)
         cmd.add_argument('--entity', required=True, choices=['coffee', 'batch', 'equipment', 'recipe', 'brew'])
-        if name == 'get':
+        if name != 'list':
             cmd.add_argument('--id', required=True)
     for name in ('export', 'backup'):
         cmd = sub.add_parser(name)
@@ -47,6 +52,10 @@ def main(argv=None):
             result = {'id': journal.add(args.entity, read_json(args.file), args.request_id)}
         elif args.command == 'import':
             result = journal.import_bundle(read_json(args.file), args.request_id)
+        elif args.command == 'update':
+            result = journal.update(args.entity, args.id, read_json(args.file), args.request_id)
+        elif args.command == 'history':
+            result = journal.history(args.entity, args.id)
         elif args.command == 'get':
             result = journal.get(args.entity, args.id)
         elif args.command == 'export':
