@@ -1,8 +1,8 @@
 # Handoff — Coffee Journal
 
-STATUS: IN_PROGRESS
+STATUS: READY_FOR_HANDOFF
 
-Владелец: Claude (этап «проверка интеграции Supabase↔GitHub», 2026-10-06). Гермес не меняет ветку до READY_FOR_HANDOFF.
+Владелец: никто. Claude проверил интеграцию Supabase↔GitHub со стороны GitHub (см. «Интеграция Supabase») и ждёт от владельца подключения коннектора Supabase. Следующий агент ставит IN_PROGRESS перед работой.
 
 Предыдущая запись: владелец никто. Claude завершил этап «Supabase-код и подготовка к публичному репозиторию» 2026-10-06. Следующий агент перед началом работы ставит `STATUS: IN_PROGRESS` со своим именем отдельным коммитом и пушит его.
 
@@ -29,6 +29,13 @@ STATUS: IN_PROGRESS
 - Chromium (Playwright 1.58): `tests/browser_smoke.py` (демо, 390/1280px) — PASS; `tests/browser_auth_smoke.py` (вход → личные данные → токен убран из URL → выход, Supabase замокан через route) — PASS, JS-ошибок нет.
 - `git diff --check` — чисто.
 - **Не проверено:** реальный Supabase (письма, CORS, publishable key, RLS по HTTP), реальный хостинг, удалённый CI.
+
+## Интеграция Supabase (проверено 2026-10-06, только со стороны GitHub)
+- `main` = `aa82f91`, в нём только `AGENTS.md`; `supabase/` в `main` нет, значит, интеграция ничего не применяла.
+- На PR #1 нет проверок, статусов и комментариев от Supabase: preview-ветки не создаются. Workflows в репозитории — только Pages.
+- Проект, production-ветку и автодеплой агент увидеть не может: коннектора Supabase в сессии нет, сеть среды блокирует supabase.com. PR #1 оставлен draft с предупреждением «не сливать до подтверждения проекта».
+- В `supabase/` нет `config.toml`. Возможно, интеграция без него не создаёт preview — проверить после подключения коннектора.
+- Следующий шаг: владелец подключает коннектор Supabase (claude.ai → Connectors). Агент проверяет проект, миграции и таблицы, затем получает URL и publishable key и только после подтверждения владельца сливает PR или применяет миграцию.
 
 ## Публикация (обновлено 2026-10-06 21:10 UTC)
 - Владелец сделал репозиторий публичным и явно разрешил деплой. Ветка `gh-pages` собрана `tools/build-pages.sh` из `4436f54`: только runtime-файлы, `web/config.js` пустой, сайт в демо-режиме. GitHub-воркфлоу «pages build and deployment» завершился успешно (run 37531886295). Адрес: https://konst54.github.io/coffee-journal/
